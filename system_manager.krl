@@ -51,8 +51,8 @@ ruleset system_manager {
           "color": "#500b75",
           "rid": [
             "io.picolabs.logging",
-            "io.picolabs.subscription"
-            // Add addition driver rulsets here
+            "io.picolabs.subscription",
+            "driver"
           ]
         }
     }
