@@ -11,36 +11,21 @@ ruleset driver {
     __testing = {
       "events": [
         {
-          "domain": "flowers",
-          "type": "offer",
-          "attrs": [
-            "shop",
-            "host",
-            "wellKnown_Tx",
-            "amount",
-            "store_location",
-            "destination"
-          ]
+          "domain": "driver",
+          "type": "bid",
+          "attrs": ["order_id"]
         },
         {
-          "domain": "flowers",
+          "domain": "shop",
           "type": "bid_accepted",
-          "attrs": [
-            "destination",
-            "amount",
-            "expected_delivery_time",
-            "uuid",
-            "shop"
-          ]
+          "attrs": ["order_id"]
         },
         {
-          "domain": "flowers",
+          "domain": "driver",
           "type": "delivered",
           "attrs": [
-            "destination",
-            "expected_delivery_time",
-            "uuid",
-            "shop"
+            "order_id",
+            "delivery_time"
           ]
         }
       ]
@@ -51,31 +36,23 @@ ruleset driver {
     }
 
     ranking = function() {
-
-    }
-
-    orders = function() {
-
-    }
-
-    connections = function() {
-
+      ent:ranking.defaultsTo(5)
     }
 
   }
 
   rule bid {
-    select when flowers offer
+    select when driver bid
 
   }
 
   rule store_delivery_info {
-    select when flowers bid_accepted
+    select when shop bid_accepted
 
   }
 
   rule report_delivered {
-    select when flowers delivered
+    select when driver delivered
 
   }
 
