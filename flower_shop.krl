@@ -17,7 +17,8 @@ ruleset flower_shop {
         { "name": "getLocation" }
       ],
       "events": [
-        { "domain": "gossip", "type": "new_message", "attrs": [] }
+        { "domain": "gossip", "type": "new_message", "attrs": [] },
+        { "domain": "shop", "type": "driver_requested", "attrs": ["destination", "customerPhone"] }
       ]
     }
 
@@ -64,10 +65,31 @@ ruleset flower_shop {
   rule auto_accept_subscription {
     select when wrangler inbound_pending_subscription_added Rx_role re#^shop$#
     pre {
-      attributes = event:attrs.klog("Subscription:")
+      attributes = event:attrs.put("shopId", meta:picoId).klog("Subscription:")
     }
     fired {
       raise wrangler event "pending_subscription_approval" attributes attributes
+    }
+  }
+
+  rule request_driver {
+    select when shop driver_requested
+    pre {
+      orderId = random:uuid()
+      order = {
+        "id": orderId,
+        "shop" meta:picoId,
+        "destination": event:attr("destination"),
+        "customerPhone": event:attr("customerPhone")
+      }
+    }
+    send_directive("created order", order)
+    fired {
+      raise gossip event "new_message"
+        attributes {
+          "order": order
+        };
+      ent:orders := ent:orders.defaultsTo({}).put(orderId, order)
     }
   }
 
@@ -83,7 +105,11 @@ ruleset flower_shop {
       msg = {
         "MessageId": messageId,
         "ShopId": meta:picoId,
-        "Timestamp": time:now()
+        "Timestamp": time:now(),
+        "Host": meta:host,
+        "WellKnown_Tx": Subscriptions.wellKnown_Rx(),
+        "Claimed": false,
+        "Order": event:attr("order")
         // Additonal items to send out for gossiping
       }
     }
