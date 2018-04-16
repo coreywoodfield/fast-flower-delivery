@@ -28,6 +28,8 @@ ruleset system_manager {
       "io.picolabs.logging",
       "io.picolabs.subscription",
       "gossip_node",
+      "keys",
+      "google_maps",
       "flower_shop"
       // Add addition shop rulesets here
     ];
