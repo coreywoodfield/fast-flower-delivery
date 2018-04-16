@@ -6,7 +6,7 @@ ruleset driver {
     use module gossip_node
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias Subscriptions
-    shares __testing
+    shares location, __testing
   }
 
   global {
@@ -35,7 +35,10 @@ ruleset driver {
     }
 
     location = function() {
-
+      {
+        "lat": "40.256984",
+        "long": "-111.649206"
+      }
     }
 
     ranking = function() {
