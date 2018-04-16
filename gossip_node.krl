@@ -27,7 +27,8 @@ Gossip Protocol for Drivers
       "events": [
         { "domain": "gossip", "type": "heartbeat", "attrs": [] },
         { "domain": "gossip", "type": "process", "attrs": ["status"] },
-        { "domain": "gossip", "type": "interval", "attrs": ["interval"] }
+        { "domain": "gossip", "type": "interval", "attrs": ["interval"] },
+        { "domain": "explicit", "type": "system_check_needed", "attrs": []}
       ]
     };
 
@@ -104,6 +105,17 @@ Gossip Protocol for Drivers
 
           p.put(["id"], id).put(["seen"], seen);
         });
+    };
+
+    getPeerPeers = function(peer) {
+      host = peer{"Tx_host"} => peer{"Tx_host"}
+                              | meta:host;
+      eci = peer{"Tx"};
+
+      url = host + "/sky/cloud/" + eci + "/" + meta:rid + "/getPeers";
+      response = http:get(url);
+      (response{"status_code"} == 200) => response{"content"}.decode()
+                                        | null
     };
 
     getPeerInfo = function() {
@@ -254,21 +266,28 @@ Gossip Protocol for Drivers
   }
 
   rule system_check {
-    select when explict system_check_needed
+    select when explicit system_check_needed
     pre {
-      needIds = findPeersWith("id", "")
+    peers = getPeers()
+      needIds = peers.filter(function(peer) {
+        "" == peer{"id"}
+      })
 
-      performFix = needIds.length() > 0
+      idsNeeded = needIds.length() > 0
+      needMorePeers = peers.length() == 1
+
+      performFix = idsNeeded || needMorePeers
     }
     if performFix then
-      send_directive("System check performing fixes", { "need_ids": needIds })
+      send_directive("System check performing fixes", { "need_ids": needIds, "need_more_peers": needMorePeers })
     fired {
-      raise explict event "need_ids" attributes { "needIds": needIds }
+      raise explicit event "need_ids" attributes { "needIds": needIds } if idsNeeded;
+      raise explicit event "need_more_peers" if needMorePeers
     }
   }
 
   rule get_needed_ids {
-    select when explict need_ids where event:attrs{"needIds"}
+    select when explicit need_ids where event:attrs{"needIds"}
     foreach event:attrs{"needIds"} setting(needsId)
       pre {
         host = needsId{"Tx_host"} => needsId{"Tx_host"}
@@ -287,9 +306,42 @@ Gossip Protocol for Drivers
       }
       event:send(e, host=host)
       always {
-        raise explict event "id_requests_sent" attributes event:attrs on final
+        raise explicit event "id_requests_sent" attributes event:attrs on final
       }
     // End foreach
+  }
+
+  // Randomly selects a new peer and attempts to connect with them
+  rule connect_to_more_peers {
+    select when explicit need_more_peers
+    pre {
+      firstPeer = getPeers()[0]
+      peersPeers = getPeerPeers(firstPeer)
+      possiblePeers = peersPeers.filter(function(peer) {
+        peer{"id"} != "" && peer{"id"} != meta:picoId
+      })
+      havePeers = possiblePeers.length() > 0
+
+      connectTo = havePeers => possiblePeers[random:integer(possiblePeers.length() - 1)]
+                             | {}
+
+      tx_host = connectTo{"Tx_host"} => connectTo{"Tx_host"}
+                                      | meta:host
+
+      subscriptionInfo = {
+        "name": meta:picoId + " <-> " + connectTo{"id"},
+        "Rx_role": "driver",
+        "Tx_role": "driver",
+        "Tx_host": tx_host,
+        "channel_type": "subscription",
+        "wellKnown_Tx": connectTo{"Tx"}
+      }
+    }
+    if havePeers then
+      send_directive("Connecting to new peer", { "subscription": subscriptionInfo })
+    fired {
+      raise wrangler event "subscription" attributes subscriptionInfo
+    }
   }
 
 
@@ -315,7 +367,7 @@ Gossip Protocol for Drivers
   rule gossip_rumor {
     // Only run when processing flag is true (except for internally generated explicit rumor events)
     select when gossip rumor where ent:processing == "on" && event:attrs{"MessageId"}
-         or explict rumor
+         or explicit rumor
     pre {
       msgId = event:attrs{"MessageId"}
 
@@ -375,7 +427,7 @@ Gossip Protocol for Drivers
   rule rumor_seen {
     select when gossip rumor_seen
     always {
-      raise explict event "system_check_needed"
+      raise explicit event "system_check_needed"
     }
   }
 
