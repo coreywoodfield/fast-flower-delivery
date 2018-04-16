@@ -174,9 +174,15 @@ ruleset flower_shop {
         bid.put("travel_time", google_maps(loc, bid{"location"}))
       });
       winner = bids.reduce(function(bid1, bid2) {
+        rating1 = bid1{"rating"};
         time1 = bid1{"travel_time"};
+        // better rating means they can get it from further away
+        // score is like golf - the lower the better
+        score1 = time1 - (rating1 * 60);
+        rating2 = bid2{"rating"};
         time2 = bid2{"travel_time"};
-        (time1 <= time2) => bid1 | bid2
+        score2 = time2 - (rating2 * 60);
+        (score1 <= score2) => bid1 | bid2
       });
       eci = winner{"eci"}
     }
