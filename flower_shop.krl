@@ -4,14 +4,17 @@ ruleset flower_shop {
     name "Flower Shop"
     description <<Shop that sells flowers>>
 
-  use module io.picolabs.subscription alias Subscriptions
+    use module io.picolabs.subscription alias Subscriptions
 
-    shares __testing
+    shares getLocation, __testing
   }
 
   global {
 
     __testing = {
+      "queries": [
+        { "name": "getLocation" }
+      ],
       "events": [
         { "domain": "gossip", "type": "new_message", "attrs": [] }
       ]
@@ -23,12 +26,37 @@ ruleset flower_shop {
           sub{"Tx_role"} == "driver";
         });
     }
+  
+    getLocation = function() {
+      ent:location
+    }
 
     sequenceNumber = function() {
       ent:sequenceNum => ent:sequenceNum
                        | 0;
     }
 
+  }
+
+  rule initialize {
+    select when wrangler ruleset_added where rid == meta:rid
+    // Randomly assign a location to this flower shop
+    pre {
+      // Generate a random latitude and longitude in Utah
+      // 41.9927959,-114.0408359 -> NE Corner
+      // 36.9990868,-109.0474112 -> SW corner
+      latitude = random:number(41.9, 36.9)
+      longitude = random:number(-114.0, -109.0)
+      
+      location = {
+        "lat": latitude,
+        "long": longitude
+      }
+    }
+    fired {
+      ent:location := location;
+      raise shop event "initialized" attributes event:attrs
+    }
   }
 
   // Automatically accept some subscriptions
