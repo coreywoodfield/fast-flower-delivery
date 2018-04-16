@@ -5,6 +5,7 @@ ruleset flower_shop {
     description <<Shop that sells flowers>>
 
     use module io.picolabs.subscription alias Subscriptions
+    use module google_maps
 
     shares getLocation, __testing
   }
