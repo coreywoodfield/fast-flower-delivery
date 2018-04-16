@@ -1,339 +1,220 @@
-// Basic ruleset to help quickly setup the project.
+ruleset flower_shop {
 
-ruleset system_manager {
   meta {
-    name "System Manager"
-    description <<Fast Flower Delivery system startup manager>>
+    name "Flower Shop"
+    description <<Shop that sells flowers>>
 
-    use module io.picolabs.wrangler alias wrangler
+    use module io.picolabs.subscription alias Subscriptions
+    use module google_maps
+    use module twilio
+        with account_sid = keys:twilio{"sid"}
+             auth_token = keys:twilio{"token"}
 
-    shares getDriver, __testing
+    shares getLocation, id, __testing
   }
 
   global {
+
     __testing = {
       "queries": [
-        { "name": "getDriver" }
+        { "name": "getLocation" }
       ],
       "events": [
-        { "domain": "manager", "type": "new_shop", "attrs": ["name", "logging_on"] },
-        { "domain": "manager", "type": "new_driver", "attrs": ["name", "logging_on"] },
-        { "domain": "manager", "type": "gossip_frequency", "attrs": ["frequency"] },
-        { "domain": "manager", "type": "introduce_nodes", "attrs": ["rx_eci", "tx_eci", "name", "rx_role", "tx_role", "tx_host", "rx_host"] },
-        { "domain": "manager", "type": "unneeded_child", "attrs": ["name"] },
-        { "domain": "manager", "type": "need_reset", "attrs": ["confirmation"] }
+        { "domain": "gossip", "type": "new_message", "attrs": [] },
+        { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] }
       ]
-    };
+    }
 
-    flowerShopRules = [
-      "io.picolabs.logging",
-      "io.picolabs.subscription",
-      "keys",
-      "google_maps",
-      "flower_shop"
-      // Add addition shop rulesets here
-    ];
-
-    driverRules = [
-      "io.picolabs.logging",
-      "io.picolabs.subscription",
-      "gossip_node",
-      "driver"
-      // Add additional driver rulesets here
-    ];
-
-    children = function() {
-      wrangler:children()
-    };
-
-    findChildrenByName = function(name) {
-      children().filter(function(child) {
-        child{"name"} == name
-      })
-    };
-
-    getDrivers = function() {
-      driversById = ent:drivers => ent:drivers
-                                 | {};
-
-      children()
-        .filter(function(child) {
-          driversById >< child{"id"}
-        })
-    };
-
-    getDriver = function(notWithThisId) {
-      drivers = getDrivers()
-        .filter(function(d) {
-          d{"id"} != notWithThisId
+    drivers = function() {
+      Subscriptions:established()
+        .filter(function(sub) {
+          sub{"Tx_role"} == "driver"
         });
+    }
 
-      driver = drivers.length() > 0 => drivers[random:integer(drivers.length() - 1)]
-                                     | null;
-      driver
+    getLocation = function() {
+      ent:location
+    }
+
+    sequenceNumber = function() {
+      ent:sequenceNum => ent:sequenceNum
+                       | 0;
+    }
+
+    id = function() {
+      meta:picoId
+    }
+
+  }
+
+  rule initialize {
+    select when wrangler ruleset_added where rid == meta:rid
+    // Randomly assign a location to this flower shop
+    pre {
+      location = google_maps:get_random_location()
+    }
+    fired {
+      ent:location := location;
+      ent:bids := {};
+      raise shop event "initialized" attributes event:attrs
     }
   }
 
+  // Automatically accept some subscriptions
+  rule auto_accept_subscription {
+    select when wrangler inbound_pending_subscription_added Rx_role re#^shop$#
+    fired {
+      raise wrangler event "pending_subscription_approval" attributes event:attrs
+    }
+  }
 
-  // -------------------------
-  // Create Children
-  // -------------------------
+  rule create_order {
+    select when shop order
+  pre {
+      orderId = random:uuid()
+      order = {
+        "id": orderId,
+        "shop": meta:picoId,
+        "destination": event:attr("destination"),
+        "customerPhone": event:attr("customerPhone")
+      }
+    }
+    send_directive("created order", order)
+    fired {
+      raise shop event "order_created"
+        attributes {
+          "order": order
+        };
+      ent:orders := ent:orders.defaultsTo({}).put(orderId, order)
+    }
+  }
 
-  rule new_flower_shop {
-    select when manager new_shop
+  rule request_driver {
+    select when shop order_created
     pre {
-      name = event:attrs{"name"} => event:attrs{"name"}
-                                 |  "Shop " + random:uuid();
+	  // Create a gossip message for the order
+      msg = {
+        "Claimed": false,
+        "Host": meta:host,
+        "WellKnown_Tx": Subscriptions:wellKnown_Rx(){"id"},
+        "ShopId": meta:picoId,
+        "Order": event:attrs{"order"}
+      }
     }
     fired {
-      raise manager event "new_child_pico"
+      raise gossip event "new_message"
         attributes {
-          "name": name,
-          "color": "#4682B4",
-          "rulesets": flowerShopRules,
-          "logging_on": event:attrs{"logging_on"},
-          "type": "shop"
+          "msg": msg
         }
     }
   }
 
-  rule new_driver {
-    select when manager new_driver
-    pre {
-      name = event:attrs{"name"} => event:attrs{"name"}
-                                 |  "Driver " + random:uuid();
-    }
+  rule store_bid {
+    select when driver bid
     fired {
-      raise manager event "new_child_pico"
-        attributes {
-          "name": name,
-          "color": "#500b75",
-          "rulesets": driverRules,
-          "logging_on": event:attrs{"logging_on"},
-          "type": "driver"
+      event:attrs.klog("Bid Attributes:")
+    }
+  }
+
+  // Create a rumor message
+  rule create_gossip_message {
+    select when gossip new_message
+    pre {
+      sequenceNum = sequenceNumber()
+
+      messageId = meta:picoId + ":" + sequenceNum
+
+      msg = event:attrs{"msg"}
+        .put("MessageId", messageId)
+        .put("Timestamp", time:now()).klog("Gossip Message:")
+    }
+    send_directive("Created new gossip message", msg)
+    fired {
+      // Increment the sequence number
+      ent:sequenceNum := sequenceNum + 1;
+
+      // Trigger an event to send the message to all known drivers
+      raise gossip event "broadcast" attributes msg
+    }
+  }
+
+  // Send a rumor message to all drivers
+  rule broadcast_gossip_message {
+    select when gossip broadcast
+    foreach drivers() setting(driver)
+      pre {
+        host = driver{"Tx_host"} => driver{"Tx_host"}
+                                  | meta:host
+        e = {
+          "eci": driver{"Tx"},
+          "eid": meta:picoId + "_gossip_msg",
+          "domain": "gossip",
+          "type": "rumor",
+          "attrs": event:attrs
         }
-    }
+      }
+      event:send(e, host=host)
+      always {
+        raise gossip event "msg_broadcast" attributes event:attrs on final
+      }
+    // End foreach
   }
-
-  rule new_child {
-    select when manager new_child_pico
-    pre {
-      logging_on = event:attrs{"logging_on"} => true | false;
-      name = event:attrs{"name"}
-      type = event:attrs{"type"}
-      color = event:attrs{"color"}
-      rules = event:attrs{"rulesets"}
-
-      setup_events = logging_on => [{
-                                      "domain": "picolog",
-                                      "type": "begin",
-                                      "attrs": {}
-                                   }] 
-                                 | []
-    }
+  
+  rule handle_driver_delivered {
+    select when driver delivered
     fired {
-      raise wrangler event "child_creation"
-        attributes {
-          "name": name,
-          "color": color,
-          "node_type": type,
-          "node_setup": {
-            "rulesets": rules,
-            "events": setup_events
-          }
-        }
+      event:attrs.klog("Delivered")
     }
   }
 
-
-  // -------------------------
-  // Initialize Children
-  // -------------------------
-
-  rule child_created {
-    select when wrangler new_child_created
-    send_directive("Child Created", event:attrs)
-    fired {
-      raise manager event "child_created" attributes event:attrs
-    }
-  }
-
-  rule driver_created {
-    select when wrangler new_child_created where event:attrs{["rs_attrs", "node_type"]} == "driver"
+  // schedule event to process the bids on a delivery
+  rule message_sent {
+    select when shop order_created
     pre {
-      id = event:attrs{"id"}
-      name = event:attrs{"name"}
+      id = event:attrs{["Order","id"]}
     }
     always {
-      ent:drivers := ent:drivers.defaultsTo({}).put(id, name);
+      ent:bids := ent:bids.put(id, []);
+      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes event:attr("Order")
     }
   }
 
-  // Install all the needed rulsets into the child
-  rule install_rulesets {
-    select when wrangler child_initialized
-    foreach event:attrs{["rs_attrs", "node_setup", "rulesets"]} setting(rule)
-      // Installing using an event so the wrangler ruleset_added event is fired
-      event:send({
-        "eci": event:attrs{"eci"},
-        "eid": "sm_install_ruleset",
-        "domain": "wrangler",
-        "type": "install_rulesets_requested",
-        "attrs": {
-          "rid": rule
-        }
-      })
-      fired {
-        raise manager event "rulesets_installed" attributes event:attrs on final
-      }
-    // End foreach
-  }
-
-  // Fire any addition events that the child needs for initialization
-  rule initialize_child {
-    select when manager rulesets_installed
-    foreach event:attrs{["rs_attrs", "node_setup", "events"]} setting(eventInfo)
-      event:send({
-        "eci": event:attrs{"eci"},
-        "eid": "sm_initialize",
-        "domain": eventInfo{"domain"},
-        "type": eventInfo{"type"},
-        "attrs": eventInfo{"attrs"}
-      })
-      fired {
-        raise manager event "child_initialized" attributes event:attrs on final
-      }
-    // End foreach
-  }
-
-  // Introduces the newly created child to a driver
-  rule create_subscriptions {
-    // Select this rule after the rulesets have been installed, and the setup events (if any) have been sent
-    select when manager rulesets_installed where event:attrs{["rs_attrs", "node_setup", "events"]}.length() == 0
-             or manager child_initialized
+  rule process_bids {
+    select when event process_bids
     pre {
-      driver = getDriver(event:attrs{"id"})
-
-      name = driver => driver{"name"} + " <-> " + event:attrs{"name"}
-                     | ""
-      role = (driver && event:attrs{["rs_attrs", "node_type"]} == "shop") => "shop"
-                                                                           | "driver"
+      loc = ent:location;
+      bids = ent:bids{event:attr("MessageId")};
+      bids = bids.map(function(bid) {
+        bid.put("travel_time", google_maps(loc, bid{"location"}))
+      });
+      winner = bids.reduce(function(bid1, bid2) {
+        rating1 = bid1{"ranking"};
+        time1 = bid1{"travel_time"};
+        // better rating means they can get it from further away
+        // score is like golf - the lower the better
+        score1 = time1 - (rating1 * 60);
+        rating2 = bid2{"ranking"};
+        time2 = bid2{"travel_time"};
+        score2 = time2 - (rating2 * 60);
+        (score1 <= score2) => bid1 | bid2
+      });
+      eci = winner{"Tx"}
     }
-    if driver then
-        send_directive("Creating subscription", { "name": name, "role": role, "driver": driver })
-    fired {
-      raise manager event "introduce_nodes"
-        attributes {
-          "rx_eci": event:attrs{"eci"},
-          "rx_role": role,
-          "tx_eci": driver{"eci"},
-          "tx_role": "driver",
-          "name": name
-        }
-    }
-  }
-
-  // Introduces on node to another node
-  rule introduce_nodes {
-    select when manager introduce_nodes
-                where event:attrs{"rx_eci"} && event:attrs{"tx_eci"} && event:attrs{"name"}
-    pre {
-      tx_host = event:attrs{"tx_host"} => event:attrs{"tx_host"}
-                                        | meta:host
-      rx_host = event:attrs{"rx_host"} => event:attrs{"rx_host"}
-                                        | meta:host
-
-      tx_role = event:attrs{"tx_role"} => event:attrs{"tx_role"}
-                                        | "node"
-      rx_role = event:attrs{"rx_role"} => event:attrs{"rx_role"}
-                                        | "node"
-
-      name = event:attrs{"name"}
-      toEci = event:attrs{"rx_eci"}
-      wellKnownEci = event:attrs{"tx_eci"}
-
-      subscriptionInfo = {
-        "name": name,
-        "Rx_role": rx_role,
-        "Tx_role": tx_role,
-        "Tx_host": tx_host,
-        "channel_type": "subscription",
-        "wellKnown_Tx": wellKnownEci
-      }
-
-      event = {
-        "eci": toEci,
-        "eid": "sm_introduce",
-        "domain": "wrangler",
-        "type": "subscription",
-        "attrs": subscriptionInfo
-      }
-    }
-    every {
-      send_directive("Introducing nodes", { "introduce": toEci, "to": wellKnownEci, "roles": [rx_role, tx_role] })
-      event:send(event, host=rx_host)
-    }
-    fired {
-      raise manager event "node_introduced" attributes event
+    event:send({
+      "eci": eci,
+      "domain": "shop",
+      "type": "bid_accepted",
+      "attrs": event:attrs,
+      "host": bid{"host"}
+    })
+    always {
+      raise shop event bid_accepted attributes event:attrs
     }
   }
 
-  rule update_gossip_frequency {
-    select when manager gossip_frequency where event:attrs{"frequency"}.as("Number") > 0
-    foreach getDrivers() setting(driver)
-      pre {
-        frequency = event:attrs{"frequency"}.as("Number")
-      }
-      event:send({
-        "eci": driver{"eci"},
-        "eid": "sm_change_frequency",
-        "domain": "gossip",
-        "type": "interval",
-        "attrs": {
-          "interval": frequency
-        }
-      })
-    // End foreach
+  rule notify_customer {
+    select when shop bid_accepted
+    twilio:send_sms(event:attr("customerPhone"), "+13854744122", "Your flowers will be delivered soon!")
   }
 
-
-  // -------------------------
-  // Remove Children
-  // -------------------------
-
-  // Removes the child node with the given name
-  rule unneeded_child {
-    select when manager unneeded_child where event:attrs{"name"}
-    pre {
-      name = event:attrs{"name"};
-      matches = findChildrenByName(name);
-      exists = matches.length() > 0;
-      child = exists => matches.head().klog("CHILD")
-                      | {}
-      index = exists => children().index(child)
-                      | -1
-    }
-    if exists then
-      send_directive("Child deleted", { "child": child })
-    fired {
-      raise wrangler event "child_deletion"
-        attributes {
-          "id": child{"id"},
-          "eci": child{"eci"}
-        }
-    }
-  }
-
-  // Removes all children
-  rule remove_all_children {
-    select when manager need_reset confirmation re#^confirm$#
-    foreach children() setting(child)
-      always {
-        raise manager event "unneeded_child"
-          attributes {
-            "name": child{"name"}
-          }
-      }
-    // End foreach
-  }
 }
