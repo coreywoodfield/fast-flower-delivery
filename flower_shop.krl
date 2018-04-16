@@ -57,6 +57,7 @@ ruleset flower_shop {
     fired {
       ent:location := location;
       ent:bids := {};
+      ent:wait_time := 60;
       raise shop event "initialized" attributes event:attrs
     }
   }
