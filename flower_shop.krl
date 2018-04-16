@@ -61,6 +61,7 @@ ruleset flower_shop {
     }
     fired {
       ent:location := location;
+      ent:bids := {};
       raise shop event "initialized" attributes event:attrs
     }
   }
@@ -150,6 +151,42 @@ ruleset flower_shop {
         raise gossip event "msg_broadcast" attributes event:attrs on final
       }
     // End foreach
+  }
+
+  // schedule event to process the bids on a delivery
+  rule message_sent {
+    select when gossip msg_broadcast
+    pre {
+      id = event:attr("MessageId")
+    }
+    always {
+      ent:bids := ent:bids.put(id, []);
+      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes {"MessageId": id}
+    }
+  }
+
+  rule process_bids {
+    select when event process_bids
+    pre {
+      loc = ent:location;
+      bids = ent:bids{event:attr("MessageId")};
+      bids = bids.map(function(bid) {
+        bid.put("travel_time", google_maps(loc, bid{"location"}))
+      });
+      winner = bids.reduce(function(bid1, bid2) {
+        time1 = bid1{"travel_time"};
+        time2 = bid2{"travel_time"};
+        (time1 <= time2) => bid1 | bid2
+      });
+      eci = winner{"eci"}
+    }
+    event:send({
+      "eci": eci,
+      "domain": "driver",
+      "type": "bid_selected",
+      "attrs": event:attrs,
+      "host": bid{"host"}
+    })
   }
 
 }
