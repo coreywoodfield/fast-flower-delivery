@@ -16,8 +16,8 @@ ruleset google_maps {
         qs = {
           "key": keys:google_maps{"api_key"},
           "units": "imperial",
-          "origins": <<#{driver{"latitude"}},#{driver{"longitude"}}>>,
-          "destinations": <<#{shop{"latitude"}},#{shop{"longitude"}}>>
+          "origins": <<#{driver{"lat"}},#{driver{"long"}}>>,
+          "destinations": <<#{shop{"lat"}},#{shop{"long"}}>>
         },
         parseJSON = true
       ){["content","rows"]}[0]{"elements"}[0]{["duration","value"]}
