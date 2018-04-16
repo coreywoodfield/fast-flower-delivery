@@ -31,7 +31,7 @@ ruleset flower_shop {
           sub{"Tx_role"} == "driver"
         });
     }
-  
+
     getLocation = function() {
       ent:location
     }
@@ -68,9 +68,9 @@ ruleset flower_shop {
     }
   }
 
-  rule request_driver {
-    select when shop driver_requested
-    pre {
+  rule create_order {
+    select when shop order
+  pre {
       orderId = random:uuid()
       order = {
         "id": orderId,
@@ -81,11 +81,31 @@ ruleset flower_shop {
     }
     send_directive("created order", order)
     fired {
-      raise gossip event "new_message"
+      raise shop event "order_created"
         attributes {
           "order": order
         };
       ent:orders := ent:orders.defaultsTo({}).put(orderId, order)
+    }
+  }
+
+  rule request_driver {
+    select when shop order_created
+    pre {
+	  // Create a gossip message for the order
+      msg = {
+        "Claimed": false,
+        "Host": meta:host,
+        "WellKnown_Tx": Subscriptions:wellKnown_Rx(){"id"},
+        "ShopId": meta:picoId,
+        "Order": event:attrs{"order"}
+      }
+    }
+    fired {
+      raise gossip event "new_message"
+        attributes {
+          "msg": msg
+        }
     }
   }
 
@@ -104,16 +124,9 @@ ruleset flower_shop {
 
       messageId = meta:picoId + ":" + sequenceNum
 
-      msg = {
-        "MessageId": messageId,
-        "ShopId": meta:picoId,
-        "Timestamp": time:now(),
-        "Host": meta:host,
-        "WellKnown_Tx": Subscriptions:wellKnown_Rx(){"id"},
-        "Claimed": false,
-        "Order": event:attr("order")
-        // Additonal items to send out for gossiping
-      }
+      msg = event:attrs{"msg"}
+        .put("MessageId", messageId)
+        .put("Timestamp", time:now()).klog("Gossip Message:")
     }
     send_directive("Created new gossip message", msg)
     fired {
@@ -147,16 +160,9 @@ ruleset flower_shop {
     // End foreach
   }
 
-  rule handle_driver_delivered {
-    select when driver delivered
-    fired {
-      event:attrs.klog("Delivered")
-    }
-  }
-
   // schedule event to process the bids on a delivery
   rule message_sent {
-    select when gossip msg_broadcast
+    select when shop order_created
     pre {
       id = event:attrs{["Order","id"]}
     }
