@@ -104,7 +104,6 @@ ruleset driver {
   rule subscribe_to_shop {
     select when driver bid where not isOwnerSubscribed(orderId)
     pre {
-      a = event:attrs.klog("SUBSCRIBING")
       orderId = event:attr("orderId")
       shopId = shopFromOrder(orderId)
       message = getMessageByPossibleOrderId(orderId)
@@ -122,7 +121,7 @@ ruleset driver {
       "attrs": {
         "channel_type": "subscription",
         "Tx_host": Rx_host,
-        "wellKnown_Tx": wellKnown_Rx.klog("WKRX"),
+        "wellKnown_Tx": wellKnown_Rx,
         "Rx_role": "shop",
         "Tx_role": "driver",
         "orderId": orderId
@@ -133,7 +132,6 @@ ruleset driver {
   rule bid_on_id_to_Tx_stored {
     select when driver id_to_Tx_stored where orderId
     fired {
-      event:attrs.klog("SUBSCRIBED with order");
       raise driver event "bid"
         attributes {"orderId": event:attr("orderId")}
     }
@@ -146,7 +144,6 @@ ruleset driver {
       shopId = wrangler:skyQuery(Tx, "flower_shop", "id", {})
     }
     fired {
-      event:attrs.klog("SUBSCRIBED");
       ent:id_to_Tx := id_to_Tx.defaultsTo({});
       ent:id_to_Tx{shopId} := Tx;
       raise driver event "id_to_Tx_stored"
