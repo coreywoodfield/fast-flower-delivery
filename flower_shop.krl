@@ -179,8 +179,8 @@ ruleset flower_shop {
     }
     event:send({
       "eci": eci,
-      "domain": "driver",
-      "type": "bid_selected",
+      "domain": "shop",
+      "type": "bid_accepted",
       "attrs": event:attrs,
       "host": bid{"host"}
     })
