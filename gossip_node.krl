@@ -64,7 +64,7 @@ Gossip Protocol for Drivers
       lottery = peers.map(function(peer) {
         behind = getNeededRumors(peer{"seen"}).length();
         numTickets = behind > 0 => behind * 2
-                     | 1;
+                                 | 1;
         {
           "numTickets": numTickets,
           "peer": peer
@@ -99,9 +99,9 @@ Gossip Protocol for Drivers
         .map(function(p) {
           // Merge the extra peer information with the subscription information
           id = peerInfo{[p{"Tx"}, "id"]} => peerInfo{[p{"Tx"}, "id"]}
-                          | "";
+                                          | "";
           seen = peerInfo{[p{"Tx"}, "seen"]} => peerInfo{[p{"Tx"}, "seen"]}
-                            | {};
+                                              | {};
 
           p.put(["id"], id).put(["seen"], seen);
         });
@@ -120,7 +120,7 @@ Gossip Protocol for Drivers
 
     getPeerInfo = function() {
       ent:peerInfo => ent:peerInfo
-              | {}
+                    | {}
     };
 
     getRandomRumorMessageFor = function(peer) {
@@ -131,12 +131,12 @@ Gossip Protocol for Drivers
 
     getRumors = function() {
       ent:rumors => ent:rumors
-            | {};
+                  | {};
     }
 
     getSeen = function() {
       ent:seen => ent:seen
-            | {};
+                | {};
     };
 
     getMessages = function() {
@@ -145,9 +145,9 @@ Gossip Protocol for Drivers
 
     prepareMessage = function(subscriber) {
       msgType = (random:integer(1) == 0) => "rumor"
-                        | "seen";
+                                          | "seen";
       attrs = (msgType == "rumor") => getRandomRumorMessageFor(subscriber)
-                      | getSeen();
+                                    | getSeen();
       subscriber => {
         "eci": subscriber{"Tx"},
         "eid": meta:picoId + "_" + msgType,
@@ -171,17 +171,17 @@ Gossip Protocol for Drivers
         .sort(function(a, b) {
           (a{"SequenceNum"} <  b{"SequenceNum"}) => -1 |
           (a{"SequenceNum"} == b{"SequenceNum"}) =>  0 |
-                                 1
+                                                     1
         })
         .reduce(function(current, msg) {
           (current == msg{"SequenceNum"}) => current + 1
-                           | current
+                                           | current
         }, 0);
       maxForSeen = (maxCompleteSequenceNum > 0) => maxCompleteSequenceNum - 1
-                             | 0;
+                                                 | 0;
 
       originId => seen.put([originId], maxForSeen)
-            | seen;
+                | seen;
     };
   }
 
@@ -225,9 +225,9 @@ Gossip Protocol for Drivers
          or gossip need_id where event:attrs{"Tx"}
     pre {
       tx = event:attrs{"Tx"} => event:attrs{"Tx"}
-                  | event:attrs{"_Tx"}
+                              | event:attrs{"_Tx"}
       host = event:attrs{"Tx_host"} => event:attrs{"Tx_host"}
-                       | meta:host
+                                     | meta:host
 
       e = {
         "eci": tx,
@@ -253,7 +253,7 @@ Gossip Protocol for Drivers
       matches = findPeersWith("Rx", meta:eci)
       found = matches.length() == 1
       peer = found => matches.head()
-              | {}
+                    | {}
 
       id = event:attrs{"picoId"}
     }
@@ -268,7 +268,7 @@ Gossip Protocol for Drivers
   rule system_check {
     select when explicit system_check_needed
     pre {
-    peers = getPeers()
+      peers = getPeers()
       needIds = peers.filter(function(peer) {
         "" == peer{"id"}
       })
@@ -291,7 +291,7 @@ Gossip Protocol for Drivers
     foreach event:attrs{"needIds"} setting(needsId)
       pre {
         host = needsId{"Tx_host"} => needsId{"Tx_host"}
-                       | meta:host
+                                   | meta:host
         e = {
           "eci": needsId{"Tx"},
           "eid": meta:picoId,
@@ -403,7 +403,7 @@ Gossip Protocol for Drivers
       matches = findPeersWith("Rx", meta:eci)
       found = matches.length() == 1
       peer = found => matches.head()
-              | {}
+                    | {}
 
       // Figure out what rumors we need to send
       peerSeen = event:attrs.map(function(sequenceNum) {
@@ -439,7 +439,7 @@ Gossip Protocol for Drivers
         peer = event:attrs{"peer"}
 
         host = peer{"Tx_host"} => peer{"Tx_host"}
-                    | meta:host
+                                | meta:host
       }
       event:send({
         "eci": peer{"Tx"},
