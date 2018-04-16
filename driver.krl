@@ -4,6 +4,7 @@ ruleset driver {
     name "Driver"
     description <<Driver that delivers flowers>>
     use module gossip_node
+    use module io.picolabs.wrangler alias wrangler
     shares __testing
   }
 
@@ -14,19 +15,19 @@ ruleset driver {
         {
           "domain": "driver",
           "type": "bid",
-          "attrs": ["order_id"]
+          "attrs": ["orderId"]
         },
         {
           "domain": "shop",
           "type": "bid_accepted",
-          "attrs": ["order_id"]
+          "attrs": ["orderId"]
         },
         {
           "domain": "driver",
           "type": "delivered",
           "attrs": [
-            "order_id",
-            "delivery_time"
+            "orderId",
+            "deliveryTime"
           ]
         }
       ]
@@ -58,8 +59,8 @@ ruleset driver {
 
     isOwnerSubscribed = function(orderId) {
       isSubscribed(
-        shopFromOrder(orderId)
-      )
+        shopFromOrder(orderId).klog("SFO")
+      ).klog("IS SUBSCRIBED")
     }
 
     shopFromOrder = function(orderId) {
@@ -73,8 +74,9 @@ ruleset driver {
   }
 
   rule bid {
-    select when driver bid where isOwnerSubscribed(orderId))
+    select when driver bid where isOwnerSubscribed(orderId)
     pre {
+      a = null.klog("YES SUBSCRIBED")
       orderId = event:attr("orderId")
       shopId = message{"ShopId"}
       Tx = ent:id_to_Tx(shopId)
@@ -89,14 +91,14 @@ ruleset driver {
   }
 
   rule subscribe_to_shop {
-    select when driver bid where not(isOwnerSubscribed(orderId))
+    select when driver bid where not isOwnerSubscribed(orderId).klog("IS_SUBSCRIBED")
     pre {
+      a = null.klog("NOT SUBSCRIBED")
       orderId = event:attr("orderId")
       shopId = shopFromOrder(orderId)
       message = getMessageByPossibleOrderId(orderId)
       host = message{"Host"}
       wellKnown_Tx = message{"WellKnown_Tx"}
-      shopId = event:attr("shopId")
     }
     event:send({
       "eci": wellKnown_Tx,
@@ -109,6 +111,7 @@ ruleset driver {
         "wellKnown_Tx": wellKnown_Tx,
         "Rx_role": "driver",
         "Tx_role": "shop",
+        "shopId": shopId,
         "orderId": orderId
       }
     })
@@ -125,10 +128,11 @@ ruleset driver {
   rule store_id_to_Tx {
     select when wrangler pending_subscription_approval
     pre {
-      shopId = event:attr("shopId")
       Tx = event:attr("Tx")
+      shopId = wrangler:skyQuery(Tx, "flower_shop", "id", {})
     }
     fired {
+      ent:id_to_Tx := id_to_Tx.defaultsTo({});
       ent:id_to_Tx{shopId} := Tx
     }
   }

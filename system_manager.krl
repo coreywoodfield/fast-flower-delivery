@@ -27,6 +27,7 @@ ruleset system_manager {
     flowerShopRules = [
       "io.picolabs.logging",
       "io.picolabs.subscription",
+      "gossip_node",
       "flower_shop"
       // Add addition shop rulesets here
     ];

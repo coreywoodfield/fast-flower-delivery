@@ -7,7 +7,7 @@ ruleset flower_shop {
     use module io.picolabs.subscription alias Subscriptions
     use module google_maps
 
-    shares getLocation, __testing
+    shares getLocation, id, __testing
   }
 
   global {
@@ -36,6 +36,10 @@ ruleset flower_shop {
     sequenceNumber = function() {
       ent:sequenceNum => ent:sequenceNum
                        | 0;
+    }
+
+    id = function() {
+      meta:picoId
     }
 
   }
@@ -78,7 +82,7 @@ ruleset flower_shop {
       orderId = random:uuid()
       order = {
         "id": orderId,
-        "shop" meta:picoId,
+        "shop": meta:picoId,
         "destination": event:attr("destination"),
         "customerPhone": event:attr("customerPhone")
       }
@@ -107,11 +111,11 @@ ruleset flower_shop {
         "ShopId": meta:picoId,
         "Timestamp": time:now(),
         "Host": meta:host,
-        "WellKnown_Tx": Subscriptions.wellKnown_Rx(),
+        "WellKnown_Tx": Subscriptions:wellKnown_Rx(){"id"},
         "Claimed": false,
         "Order": event:attr("order")
         // Additonal items to send out for gossiping
-      }
+      }.klog("4")
     }
     send_directive("Created new gossip message", msg)
     fired {
