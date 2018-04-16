@@ -18,6 +18,7 @@ ruleset system_manager {
       "events": [
         { "domain": "manager", "type": "new_shop", "attrs": ["name", "logging_on"] },
         { "domain": "manager", "type": "new_driver", "attrs": ["name", "logging_on"] },
+        { "domain": "manager", "type": "gossip_frequency", "attrs": ["frequency"] },
         { "domain": "manager", "type": "introduce_nodes", "attrs": ["rx_eci", "tx_eci", "name", "rx_role", "tx_role", "tx_host", "rx_host"] },
         { "domain": "manager", "type": "unneeded_child", "attrs": ["name"] },
         { "domain": "manager", "type": "need_reset", "attrs": ["confirmation"] }
@@ -52,14 +53,18 @@ ruleset system_manager {
       })
     };
 
-    getDriver = function(notWithThisId) {
+    getDrivers = function() {
       driversById = ent:drivers => ent:drivers
                                  | {};
 
-      drivers = children()
+      children()
         .filter(function(child) {
           driversById >< child{"id"}
         })
+    };
+
+    getDriver = function(notWithThisId) {
+      drivers = getDrivers()
         .filter(function(d) {
           d{"id"} != notWithThisId
         });
@@ -231,49 +236,66 @@ ruleset system_manager {
 
   // Introduces on node to another node
   rule introduce_nodes {
-        select when manager introduce_nodes
-                    where event:attrs{"rx_eci"} && event:attrs{"tx_eci"} && event:attrs{"name"}
-        pre {
-            tx_host = event:attrs{"tx_host"} => event:attrs{"tx_host"}
-                                              | meta:host
-            rx_host = event:attrs{"rx_host"} => event:attrs{"rx_host"}
-                                              | meta:host
+    select when manager introduce_nodes
+                where event:attrs{"rx_eci"} && event:attrs{"tx_eci"} && event:attrs{"name"}
+    pre {
+      tx_host = event:attrs{"tx_host"} => event:attrs{"tx_host"}
+                                        | meta:host
+      rx_host = event:attrs{"rx_host"} => event:attrs{"rx_host"}
+                                        | meta:host
 
-            tx_role = event:attrs{"tx_role"} => event:attrs{"tx_role"}
-                                              | "node"
-            rx_role = event:attrs{"rx_role"} => event:attrs{"rx_role"}
-                                              | "node"
+      tx_role = event:attrs{"tx_role"} => event:attrs{"tx_role"}
+                                        | "node"
+      rx_role = event:attrs{"rx_role"} => event:attrs{"rx_role"}
+                                        | "node"
 
-            name = event:attrs{"name"}
-            toEci = event:attrs{"rx_eci"}
-            wellKnownEci = event:attrs{"tx_eci"}
+      name = event:attrs{"name"}
+      toEci = event:attrs{"rx_eci"}
+      wellKnownEci = event:attrs{"tx_eci"}
 
-            subscriptionInfo = {
-                "name": name,
-                "Rx_role": rx_role,
-                "Tx_role": tx_role,
-                "Tx_host": tx_host,
-                "channel_type": "subscription",
-                "wellKnown_Tx": wellKnownEci
-            }
+      subscriptionInfo = {
+        "name": name,
+        "Rx_role": rx_role,
+        "Tx_role": tx_role,
+        "Tx_host": tx_host,
+        "channel_type": "subscription",
+        "wellKnown_Tx": wellKnownEci
+      }
 
-            event = {
-                "eci": toEci,
-                "eid": "sm_introduce",
-                "domain": "wrangler",
-                "type": "subscription",
-                "attrs": subscriptionInfo
-            }
-        }
-        every {
-            send_directive("Introducing nodes", { "introduce": toEci, "to": wellKnownEci, "roles": [rx_role, tx_role] })
-            event:send(event, host=rx_host)
-        }
-        fired {
-            raise manager event "node_introduced" attributes event
-        }
+      event = {
+        "eci": toEci,
+        "eid": "sm_introduce",
+        "domain": "wrangler",
+        "type": "subscription",
+        "attrs": subscriptionInfo
+      }
     }
+    every {
+      send_directive("Introducing nodes", { "introduce": toEci, "to": wellKnownEci, "roles": [rx_role, tx_role] })
+      event:send(event, host=rx_host)
+    }
+    fired {
+      raise manager event "node_introduced" attributes event
+    }
+  }
 
+  rule update_gossip_frequency {
+    select when manager gossip_frequency where event:attrs{"frequency"}.as("Number") > 0
+    foreach getDrivers() setting(driver)
+      pre {
+        frequency = event:attrs{"frequency"}.as("Number")
+      }
+      event:send({
+        "eci": driver{"eci"},
+        "eid": "sm_change_frequency",
+        "domain": "gossip",
+        "type": "interval",
+        "attrs": {
+          "interval": frequency
+        }
+      })
+    // End foreach
+  }
 
 
   // -------------------------
@@ -316,5 +338,3 @@ ruleset system_manager {
     // End foreach
   }
 }
-
-
