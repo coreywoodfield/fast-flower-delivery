@@ -6,6 +6,7 @@ ruleset driver {
     use module gossip_node
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias Subscriptions
+    use module google_maps
     shares location, __testing
   }
 
@@ -34,12 +35,7 @@ ruleset driver {
       ]
     }
 
-    location = function() {
-      {
-        "lat": "40.256984",
-        "long": "-111.649206"
-      }
-    }
+    location = google_maps:get_random_location
 
     ranking = function() {
       ent:ranking.defaultsTo(5)

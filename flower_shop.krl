@@ -6,6 +6,9 @@ ruleset flower_shop {
 
     use module io.picolabs.subscription alias Subscriptions
     use module google_maps
+    use module twilio
+        with account_sid = keys:twilio{"sid"}
+             auth_token = keys:twilio{"token"}
 
     shares getLocation, id, __testing
   }
@@ -48,19 +51,11 @@ ruleset flower_shop {
     select when wrangler ruleset_added where rid == meta:rid
     // Randomly assign a location to this flower shop
     pre {
-      // Generate a random latitude and longitude in Utah
-      // 41.9927959,-114.0408359 -> NE Corner
-      // 36.9990868,-109.0474112 -> SW corner
-      latitude = random:number(41.9, 36.9)
-      longitude = random:number(-114.0, -109.0)
-      
-      location = {
-        "lat": latitude,
-        "long": longitude
-      }
+      location = google_maps:get_random_location()
     }
     fired {
       ent:location := location;
+      ent:bids := {};
       raise shop event "initialized" attributes event:attrs
     }
   }
@@ -157,6 +152,56 @@ ruleset flower_shop {
     fired {
       event:attrs.klog("DELIVERED")
     }
+  }
+
+  // schedule event to process the bids on a delivery
+  rule message_sent {
+    select when gossip msg_broadcast
+    pre {
+      id = event:attrs{["Order","id"]}
+    }
+    always {
+      ent:bids := ent:bids.put(id, []);
+      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes event:attr("Order")
+    }
+  }
+
+  rule process_bids {
+    select when event process_bids
+    pre {
+      loc = ent:location;
+      bids = ent:bids{event:attr("MessageId")};
+      bids = bids.map(function(bid) {
+        bid.put("travel_time", google_maps(loc, bid{"location"}))
+      });
+      winner = bids.reduce(function(bid1, bid2) {
+        rating1 = bid1{"ranking"};
+        time1 = bid1{"travel_time"};
+        // better rating means they can get it from further away
+        // score is like golf - the lower the better
+        score1 = time1 - (rating1 * 60);
+        rating2 = bid2{"ranking"};
+        time2 = bid2{"travel_time"};
+        score2 = time2 - (rating2 * 60);
+        (score1 <= score2) => bid1 | bid2
+      });
+      eci = winner{"Tx"}
+    }
+    event:send({
+      "eci": eci,
+      "domain": "shop",
+      "type": "bid_accepted",
+      "attrs": event:attrs,
+      "host": bid{"host"}
+    })
+    always {
+      raise shop event bid_accepted attributes event:attrs
+    }
+  }
+
+  rule notify_customer {
+    select when shop bid_accepted
+    twilio:send_sms(event:attr("customerPhone"), "+13854744122", "Your flowers will be delivered soon!")
   }
 
 }
