@@ -108,7 +108,6 @@ ruleset flower_shop {
       sequenceNum = sequenceNumber()
 
       messageId = meta:picoId + ":" + sequenceNum
-      sensorId = meta:txnId
 
       msg = {
         "MessageId": messageId,
