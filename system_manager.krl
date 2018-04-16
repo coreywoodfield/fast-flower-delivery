@@ -37,6 +37,8 @@ ruleset system_manager {
     driverRules = [
       "io.picolabs.logging",
       "io.picolabs.subscription",
+      "keys",
+      "google_maps",
       "gossip_node",
       "driver"
       // Add additional driver rulesets here
