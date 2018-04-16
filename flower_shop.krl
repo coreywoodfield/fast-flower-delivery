@@ -150,7 +150,7 @@ ruleset flower_shop {
   rule handle_driver_delivered {
     select when driver delivered
     fired {
-      event:attrs.klog("DELIVERED")
+      event:attrs.klog("Delivered")
     }
   }
 

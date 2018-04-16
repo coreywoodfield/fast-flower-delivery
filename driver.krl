@@ -170,22 +170,22 @@ ruleset driver {
   rule report_delivered {
     select when driver delivered
     pre {
-      orderId = event:attr("orderId").klog("ORDER ID")
-      order = ent:orders{orderId}.klog("ORDER")
-      shopId = shopFromOrder(orderId).klog("SHOP ID")
-      channel = ent:id_to_Tx{[shopId, "channel"]}.klog("CHANNEL")
-      host = ent:id_to_Tx{[shopId, "host"]}.klog("HOST")
+      orderId = event:attr("orderId")
+      order = ent:orders{orderId}
+      shopId = shopFromOrder(orderId)
+      channel = ent:id_to_Tx{[shopId, "channel"]}
+      host = ent:id_to_Tx{[shopId, "host"]}
     }
     event:send({
-      "eci": channel.klog("CHANNEL"),
+      "eci": channel,
       "eid": "driver_report_delivered",
-      "host": host.klog("HOST"),
+      "host": host,
       "domain": "driver",
       "type": "delivered",
-      "attrs": event:attrs.klog("ATTRS")
+      "attrs": event:attrs
     })
     fired {
-      ent:orders := ent:orders.delete(orderId).klog("DELETED")
+      ent:orders := ent:orders.delete(orderId)
     }
   }
 
