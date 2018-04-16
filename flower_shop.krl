@@ -6,6 +6,9 @@ ruleset flower_shop {
 
     use module io.picolabs.subscription alias Subscriptions
     use module google_maps
+    use module twilio
+        with account_sid = keys:twilio{"sid"}
+             auth_token = keys:twilio{"token"}
 
     shares getLocation, id, __testing
   }
@@ -148,11 +151,11 @@ ruleset flower_shop {
   rule message_sent {
     select when gossip msg_broadcast
     pre {
-      id = event:attr("MessageId")
+      id = event:attrs{["Order","id"]}
     }
     always {
       ent:bids := ent:bids.put(id, []);
-      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes {"MessageId": id}
+      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes event:attr("Order")
     }
   }
 
@@ -184,6 +187,14 @@ ruleset flower_shop {
       "attrs": event:attrs,
       "host": bid{"host"}
     })
+    always {
+      raise shop event bid_accepted attributes event:attrs
+    }
+  }
+
+  rule notify_customer {
+    select when shop bid_accepted
+    twilio:send_sms(event:attr("customerPhone"), "+13854744122", "Your flowers will be delivered soon!")
   }
 
 }
