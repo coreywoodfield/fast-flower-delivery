@@ -6,6 +6,7 @@ ruleset flower_shop {
 
     use module io.picolabs.subscription alias Subscriptions
     use module google_maps
+    use module keys
     use module twilio
         with account_sid = keys:twilio{"sid"}
              auth_token = keys:twilio{"token"}
