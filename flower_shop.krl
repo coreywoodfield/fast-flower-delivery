@@ -21,7 +21,7 @@ ruleset flower_shop {
       ],
       "events": [
         { "domain": "gossip", "type": "new_message", "attrs": [] },
-        { "domain": "shop", "type": "driver_requested", "attrs": ["destination", "customerPhone"] }
+        { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] }
       ]
     }
 
@@ -158,6 +158,13 @@ ruleset flower_shop {
         raise gossip event "msg_broadcast" attributes event:attrs on final
       }
     // End foreach
+  }
+  
+  rule handle_driver_delivered {
+    select when driver delivered
+    fired {
+      event:attrs.klog("Delivered")
+    }
   }
 
   // schedule event to process the bids on a delivery
