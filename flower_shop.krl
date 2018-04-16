@@ -25,7 +25,7 @@ ruleset flower_shop {
     drivers = function() {
       Subscriptions:established()
         .filter(function(sub) {
-          sub{"Tx_role"} == "driver";
+          sub{"Tx_role"} == "driver"
         });
     }
   
@@ -68,11 +68,8 @@ ruleset flower_shop {
   // Automatically accept some subscriptions
   rule auto_accept_subscription {
     select when wrangler inbound_pending_subscription_added Rx_role re#^shop$#
-    pre {
-      attributes = event:attrs.put("shopId", meta:picoId).klog("Subscription:")
-    }
     fired {
-      raise wrangler event "pending_subscription_approval" attributes attributes
+      raise wrangler event "pending_subscription_approval" attributes event:attrs
     }
   }
 
@@ -97,6 +94,13 @@ ruleset flower_shop {
     }
   }
 
+  rule store_bid {
+    select when driver bid
+    fired {
+      event:attrs.klog("Bid Attributes:")
+    }
+  }
+
   // Create a rumor message
   rule create_gossip_message {
     select when gossip new_message
@@ -115,7 +119,7 @@ ruleset flower_shop {
         "Claimed": false,
         "Order": event:attr("order")
         // Additonal items to send out for gossiping
-      }.klog("4")
+      }
     }
     send_directive("Created new gossip message", msg)
     fired {

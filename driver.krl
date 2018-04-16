@@ -5,6 +5,7 @@ ruleset driver {
     description <<Driver that delivers flowers>>
     use module gossip_node
     use module io.picolabs.wrangler alias wrangler
+    use module io.picolabs.subscription alias Subscriptions
     shares __testing
   }
 
@@ -59,8 +60,8 @@ ruleset driver {
 
     isOwnerSubscribed = function(orderId) {
       isSubscribed(
-        shopFromOrder(orderId).klog("SFO")
-      ).klog("IS SUBSCRIBED")
+        shopFromOrder(orderId)
+      )
     }
 
     shopFromOrder = function(orderId) {
@@ -76,24 +77,30 @@ ruleset driver {
   rule bid {
     select when driver bid where isOwnerSubscribed(orderId)
     pre {
-      a = null.klog("YES SUBSCRIBED")
       orderId = event:attr("orderId")
+      message = getMessageByPossibleOrderId(orderId)
       shopId = message{"ShopId"}
-      Tx = ent:id_to_Tx(shopId)
+      Tx = ent:id_to_Tx{shopId}
+      Rx = Subscriptions:established("Tx", Tx)[0]{"Rx"}
+      attrs = event:attrs.put({
+        "driverId": meta:picoId,
+        "Tx": Rx,
+        "ranking": ranking(),
+        "location": location()
+      })
     }
-    send({
+    event:send({
       "eci": Tx,
       "eid": "driver_bid",
       "domain": "driver",
       "type": "bid",
-      "attrs": event:attrs
+      "attrs": attrs
     })
   }
 
   rule subscribe_to_shop {
-    select when driver bid where not isOwnerSubscribed(orderId).klog("IS_SUBSCRIBED")
+    select when driver bid where not isOwnerSubscribed(orderId)
     pre {
-      a = null.klog("NOT SUBSCRIBED")
       orderId = event:attr("orderId")
       shopId = shopFromOrder(orderId)
       message = getMessageByPossibleOrderId(orderId)
