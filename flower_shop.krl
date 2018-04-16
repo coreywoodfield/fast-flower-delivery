@@ -152,4 +152,11 @@ ruleset flower_shop {
     // End foreach
   }
 
+  rule handle_driver_delivered {
+    select when driver delivered
+    fired {
+      event:attrs.klog("DELIVERED")
+    }
+  }
+
 }

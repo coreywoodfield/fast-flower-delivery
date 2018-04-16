@@ -83,7 +83,9 @@ ruleset driver {
       orderId = event:attr("orderId")
       message = getMessageByPossibleOrderId(orderId)
       shopId = message{"ShopId"}
-      Tx = ent:id_to_Tx{shopId}
+      Tx_info = ent:id_to_Tx{shopId}
+      Tx = Tx_info{"channel"}
+      Tx_host = Tx_info{"host"}
       Rx = Subscriptions:established("Tx", Tx)[0]{"Rx"}
       attrs = event:attrs.put({
         "driverId": meta:picoId,
@@ -94,6 +96,7 @@ ruleset driver {
     }
     event:send({
       "eci": Tx,
+      "host": Tx_host,
       "eid": "driver_bid",
       "domain": "driver",
       "type": "bid",
@@ -140,12 +143,16 @@ ruleset driver {
   rule store_id_to_Tx {
     select when wrangler pending_subscription_approval
     pre {
-      Tx = event:attr("Tx")
-      shopId = wrangler:skyQuery(Tx, "flower_shop", "id", {})
+      channel = event:attr("Tx")
+      host = event:attr("Tx_host")
+      shopId = wrangler:skyQuery(channel, "flower_shop", "id", {})
     }
     fired {
-      ent:id_to_Tx := id_to_Tx.defaultsTo({});
-      ent:id_to_Tx{shopId} := Tx;
+      ent:id_to_Tx := ent:id_to_Tx.defaultsTo({});
+      ent:id_to_Tx{shopId} := {
+        "channel": channel,
+        "host": host
+      };
       raise driver event "id_to_Tx_stored"
         attributes {"orderId": event:attr("orderId")}
     }
@@ -153,12 +160,37 @@ ruleset driver {
 
   rule store_delivery_info {
     select when shop bid_accepted
-
+    pre {
+      orderId = event:attr("orderId")
+      rumor = getMessageByPossibleOrderId(orderId)
+      order = rumor{"Order"}
+    }
+    fired {
+      ent:orders := ent:orders.defaultsTo({});
+      ent:orders{orderId} := order
+    }
   }
 
   rule report_delivered {
     select when driver delivered
-
+    pre {
+      orderId = event:attr("orderId").klog("ORDER ID")
+      order = ent:orders{orderId}.klog("ORDER")
+      shopId = shopFromOrder(orderId).klog("SHOP ID")
+      channel = ent:id_to_Tx{[shopId, "channel"]}.klog("CHANNEL")
+      host = ent:id_to_Tx{[shopId, "host"]}.klog("HOST")
+    }
+    event:send({
+      "eci": channel.klog("CHANNEL"),
+      "eid": "driver_report_delivered",
+      "host": host.klog("HOST"),
+      "domain": "driver",
+      "type": "delivered",
+      "attrs": event:attrs.klog("ATTRS")
+    })
+    fired {
+      ent:orders := ent:orders.delete(orderId).klog("DELETED")
+    }
   }
 
 }
