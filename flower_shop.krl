@@ -48,16 +48,7 @@ ruleset flower_shop {
     select when wrangler ruleset_added where rid == meta:rid
     // Randomly assign a location to this flower shop
     pre {
-      // Generate a random latitude and longitude in Utah
-      // 41.9927959,-114.0408359 -> NE Corner
-      // 36.9990868,-109.0474112 -> SW corner
-      latitude = random:number(41.9, 36.9)
-      longitude = random:number(-114.0, -109.0)
-      
-      location = {
-        "lat": latitude,
-        "long": longitude
-      }
+      location = google_maps:get_random_location()
     }
     fired {
       ent:location := location;
