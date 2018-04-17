@@ -121,12 +121,12 @@ ruleset flower_shop {
     select when driver bid
     pre {
       orderId = event:attrs{"OrderId"}
-      bids = ent:bids.defaultsTo({}){orderId}.defaultsTo([])
-        .append(event:attrs).klog("Current Bids:")
+      bids = getBids(){orderId}.defaultsTo([])
+        .append(event:attrs)
     }
     send_directive("Bid received", {})
     fired {
-      ent:bids := ent:bids.defaultsTo({}).put(orderId, bids);
+      ent:bids := getBids().put(orderId, bids);
     }
   }
 
@@ -194,7 +194,7 @@ ruleset flower_shop {
   }
 
   rule process_bids {
-    select when event process_bids
+    select when shop process_bids
     pre {
       loc = ent:location;
       bids = ent:bids{event:attr("MessageId")};
@@ -227,8 +227,11 @@ ruleset flower_shop {
   }
 
   rule notify_customer {
-    select when shop bid_accepted
+    select when shop bid_accepted where event:attrs{"customerPhone"}
     twilio:send_sms(event:attr("customerPhone"), "+13854744122", "Your flowers will be delivered soon!")
+    fired {
+      raise shop event "customer_notified" attributes event:attrs
+    }
   }
 
 }
