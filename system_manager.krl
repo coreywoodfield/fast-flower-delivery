@@ -39,6 +39,7 @@ ruleset system_manager {
       "io.picolabs.subscription",
       "keys",
       "google_maps",
+      "peer_handler",
       "gossip_node",
       "driver"
       // Add additional driver rulesets here
@@ -130,7 +131,7 @@ ruleset system_manager {
                                       "domain": "picolog",
                                       "type": "begin",
                                       "attrs": {}
-                                   }] 
+                                   }]
                                  | []
     }
     fired {

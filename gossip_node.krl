@@ -6,7 +6,7 @@ Gossip Protocol for Drivers
 >>
     author "Curtis Oakley"
 
-    use module io.picolabs.subscription alias Subscriptions
+    use module peer_handler
 
     shares frequency, getPeer, getPeers, getPeerInfo, getSeen, getMessages, processing, updateSeen, __testing
     provides getMessages
@@ -34,12 +34,6 @@ Gossip Protocol for Drivers
 
     frequency = function() {
       ent:frequency
-    };
-
-    findPeersWith = function(field, matches) {
-      getPeers().filter(function(peer) {
-        matches == peer{[field]}
-      })
     };
 
     // Gets a list of rumors that are needed based on the provided seen message
@@ -91,19 +85,13 @@ Gossip Protocol for Drivers
 
     getPeers = function() {
       peerInfo = getPeerInfo();
-      Subscriptions:established()
-        .filter(function(sub) {
-          // Remove any non-driver subscriptions
-          sub{"Tx_role"} == "driver"
-        })
+      peer_handler:getPeers("driver")
         .map(function(p) {
           // Merge the extra peer information with the subscription information
-          id = peerInfo{[p{"Tx"}, "id"]} => peerInfo{[p{"Tx"}, "id"]}
-                                          | "";
-          seen = peerInfo{[p{"Tx"}, "seen"]} => peerInfo{[p{"Tx"}, "seen"]}
-                                              | {};
+          seen = peerInfo{[p{"Tx"}]} => peerInfo{[p{"Tx"}]}
+                                      | {};
 
-          p.put(["id"], id).put(["seen"], seen);
+          p.put(["seen"], seen);
         });
     };
 
@@ -219,96 +207,19 @@ Gossip Protocol for Drivers
     }
   }
 
-  rule start_id_handshake {
-    select when wrangler subscription_added Rx_role re#^driver$#
-         or wrangler subscription_added status re#^outbound$#
-         or gossip need_id where event:attrs{"Tx"}
-    pre {
-      tx = event:attrs{"Tx"} => event:attrs{"Tx"}
-                              | event:attrs{"_Tx"}
-      host = event:attrs{"Tx_host"} => event:attrs{"Tx_host"}
-                                     | meta:host
-
-      e = {
-        "eci": tx,
-        "eid": meta:picoId,
-        "domain": "gossip",
-        "type": "handshake",
-        "attrs": {
-          "picoId": meta:picoId,
-          "host": host
-        }
-      }
-    }
-    event:send(e, host=host)
-    fired {
-      raise gossip event "handshake_started" attributes e
-    }
-  }
-
-  rule recieve_handshake {
-    select when gossip handshake where event:attrs{"picoId"}
-    pre {
-      // Find the peer doing the handshake
-      matches = findPeersWith("Rx", meta:eci)
-      found = matches.length() == 1
-      peer = found => matches.head()
-                    | {}
-
-      id = event:attrs{"picoId"}
-    }
-    if found then
-      send_directive("Peer found", { "peer": peer, "id": id })
-    fired {
-      ent:peerInfo := getPeerInfo().put([peer{"Tx"}, "id"], id);
-      raise gossip event "handshake_completed" attributes { "peer": peer, "id": id }
-    }
-  }
-
   rule system_check {
     select when explicit system_check_needed
     pre {
       peers = getPeers()
-      needIds = peers.filter(function(peer) {
-        "" == peer{"id"}
-      })
-
-      idsNeeded = needIds.length() > 0
       needMorePeers = peers.length() == 1
-
-      performFix = idsNeeded || needMorePeers
     }
-    if performFix then
-      send_directive("System check performing fixes", { "need_ids": needIds, "need_more_peers": needMorePeers })
-    fired {
-      raise explicit event "need_ids" attributes { "needIds": needIds } if idsNeeded;
+    if needMorePeers then
+      send_directive("System check performing fixes", { "need_more_peers": needMorePeers })
+    always {
+      // Always trigger a peers system check also and get more peers if needed
+      raise peers event "system_check_needed" attributes { "role": "driver" };
       raise explicit event "need_more_peers" if needMorePeers
     }
-  }
-
-  rule get_needed_ids {
-    select when explicit need_ids where event:attrs{"needIds"}
-    foreach event:attrs{"needIds"} setting(needsId)
-      pre {
-        host = needsId{"Tx_host"} => needsId{"Tx_host"}
-                                   | meta:host
-        e = {
-          "eci": needsId{"Tx"},
-          "eid": meta:picoId,
-          "domain": "gossip",
-          "type": "need_id",
-          "attrs": {
-            "picoId": meta:picoId,
-            "Tx": needsId{"Rx"},
-            "Tx_host": meta:host
-          }
-        }
-      }
-      event:send(e, host=host)
-      always {
-        raise explicit event "id_requests_sent" attributes event:attrs on final
-      }
-    // End foreach
   }
 
   // Randomly selects a new peer and attempts to connect with them
@@ -367,7 +278,7 @@ Gossip Protocol for Drivers
   rule gossip_rumor {
     // Only run when processing flag is true (except for internally generated explicit rumor events)
     select when gossip rumor where ent:processing == "on" && event:attrs{"MessageId"}
-         or explicit rumor
+             or explicit rumor
     pre {
       msgId = event:attrs{"MessageId"}
 
@@ -400,7 +311,10 @@ Gossip Protocol for Drivers
     select when gossip seen where ent:processing == "on"
     pre {
       // Find who sent us a seen message
-      matches = findPeersWith("Rx", meta:eci)
+      matches = getPeers()
+        .filter(function(peer) {
+          meta:eci == peer{"Rx"}
+        })
       found = matches.length() == 1
       peer = found => matches.head()
                     | {}
@@ -414,12 +328,15 @@ Gossip Protocol for Drivers
     if found then
       send_directive("Sending missing messages", { "missingRumors": rumorsToSend })
     fired {
-      ent:peerInfo := getPeerInfo().put([peer{"Tx"}, "seen"], peerSeen);
+      ent:peerInfo := getPeerInfo().put([peer{"Tx"}], peerSeen);
       raise gossip event "need_rumors"
         attributes {
           "peer": peer,
           "rumorsNeeded": rumorsToSend
         }
+    } else {
+      // We might not have found the peer due to missing ids
+      raise explicit event "system_check_needed"
     }
   }
 
