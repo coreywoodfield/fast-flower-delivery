@@ -24,7 +24,8 @@ ruleset flower_shop {
       "events": [
         { "domain": "gossip", "type": "new_message", "attrs": [] },
         { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] },
-        { "domain": "shop", "type": "process_bids", "attrs": ["orderId"] }
+        { "domain": "shop", "type": "process_bids", "attrs": ["orderId"] },
+        { "domain": "shop", "type": "bid_accepted", "attrs": ["customerPhone"]}
       ]
     }
 
@@ -250,7 +251,7 @@ ruleset flower_shop {
 
   rule notify_customer {
     select when shop bid_accepted where event:attrs{"customerPhone"}
-    twilio:send_sms(event:attr("customerPhone"), "+13854744122", "Your flowers will be delivered soon!")
+    twilio:send_sms(event:attr("customerPhone"), keys:twilio{"number"}, "Your flowers will be delivered soon!")
     fired {
       raise shop event "customer_notified" attributes event:attrs
     }
