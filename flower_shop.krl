@@ -24,7 +24,7 @@ ruleset flower_shop {
       "events": [
         { "domain": "gossip", "type": "new_message", "attrs": [] },
         { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] },
-        { "domain": "event", "type": "process_bids", "attrs": [] }
+        { "domain": "shop", "type": "process_bids", "attrs": ["MessageId"] }
       ]
     }
 
@@ -198,11 +198,11 @@ ruleset flower_shop {
   rule process_bids {
     select when shop process_bids
     pre {
-      loc = ent:location;
-      bids = ent:bids{event:attr("MessageId")};
+      loc = ent:location.klog("A");
+      bids = ent:bids{event:attr("MessageId").klog("Id")}.klog("B");
       bids = bids.map(function(bid) {
         bid.put("travel_time", google_maps(loc, bid{"location"}))
-      });
+      }).klog("C");
       winner = bids.reduce(function(bid1, bid2) {
         rating1 = bid1{"ranking"};
         time1 = bid1{"travel_time"};
@@ -213,15 +213,15 @@ ruleset flower_shop {
         time2 = bid2{"travel_time"};
         score2 = time2 - (rating2 * 60);
         (score1 <= score2) => bid1 | bid2
-      });
-      eci = winner{"Tx"}
+      }).klog("D");
+      eci = winner{"Tx"}.klog("WINNER")
     }
     event:send({
       "eci": eci,
       "domain": "shop",
       "type": "bid_accepted",
       "attrs": event:attrs,
-      "host": bid{"host"}
+      "host": bid{"host"}.klog("HOST")
     })
     always {
       raise shop event bid_accepted attributes event:attrs

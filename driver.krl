@@ -142,6 +142,7 @@ ruleset driver {
       order = rumor{"Order"}
     }
     fired {
+      event:attrs.klog("ATTRS");
       ent:orders := ent:orders.defaultsTo({});
       ent:orders{orderId} := order
     }
