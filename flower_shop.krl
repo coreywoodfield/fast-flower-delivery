@@ -230,7 +230,7 @@ ruleset flower_shop {
     pre {
       orderId = event:attrs{"id"}
       bids = getBids()
-      hasBids = orderId >< bids
+      hasBids = bids >< orderId
     }
     if hasBids then
       send_directive("Cleaning up old bids", { "current_bids": bids, "order_id": orderId })
