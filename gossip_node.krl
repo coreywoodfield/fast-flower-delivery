@@ -311,10 +311,7 @@ Gossip Protocol for Drivers
     select when gossip seen where ent:processing == "on"
     pre {
       // Find who sent us a seen message
-      matches = getPeers()
-        .filter(function(peer) {
-          meta:eci == peer{"Rx"}
-        })
+      matches = peer_handler:findPeersWith("driver", "Rx", meta:eci)
       found = matches.length() == 1
       peer = found => matches.head()
                     | {}
