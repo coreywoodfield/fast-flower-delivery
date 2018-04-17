@@ -189,17 +189,17 @@ ruleset flower_shop {
     }
     always {
       ent:bids := ent:bids.put(id, []);
-      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes event:attr("Order")
+      schedule shop event "process_bids" at time:add(time:now(), {"seconds": ent:wait_time }) attributes event:attr("order")
     }
   }
 
   rule process_bids {
     select when shop process_bids
     pre {
-      loc = ent:location;
-      bids = ent:bids{event:attr("MessageId")};
+      loc = ent:location.klog("Shop Location:");
+      bids = ent:bids{event:attrs{"id"}}.klog("Bids:");
       bids = bids.map(function(bid) {
-        bid.put("travel_time", google_maps(loc, bid{"location"}))
+        bid.put("travel_time", google_maps:get_time(loc, bid{"location"}))
       });
       winner = bids.reduce(function(bid1, bid2) {
         rating1 = bid1{"ranking"};
@@ -211,18 +211,31 @@ ruleset flower_shop {
         time2 = bid2{"travel_time"};
         score2 = time2 - (rating2 * 60);
         (score1 <= score2) => bid1 | bid2
-      });
-      eci = winner{"Tx"}
+      }).klog("Winner");
+      eci = winner{"wellKnown_Tx"}
     }
     event:send({
       "eci": eci,
       "domain": "shop",
       "type": "bid_accepted",
-      "attrs": event:attrs,
-      "host": bid{"host"}
+      "attrs": event:attrs
     })
     always {
-      raise shop event bid_accepted attributes event:attrs
+      raise shop event "bid_accepted" attributes event:attrs
+    }
+  }
+  
+  rule cleanup_bids {
+    select when shop bid_accepted
+    pre {
+      orderId = event:attrs{"id"}
+      bids = getBids()
+      hasBids = orderId >< bids
+    }
+    if hasBids then
+      send_directive("Cleaning up old bids", { "current_bids": bids, "order_id": orderId })
+    fired {
+      clear ent:bids{orderId}
     }
   }
 
