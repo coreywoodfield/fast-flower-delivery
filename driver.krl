@@ -137,15 +137,15 @@ ruleset driver {
   }
 
   rule store_id_to_Tx {
-    select when wrangler pending_subscription_approval
+    select when wrangler pending_subscription_approval where Tx_role == "shop"
     pre {
       channel = event:attr("Tx")
       host = event:attr("Tx_host")
-      shopId = wrangler:skyQuery(channel, "flower_shop", "id", {})
+      shopId = wrangler:skyQuery(channel, "flower_shop", "id", {}, host)
     }
     fired {
       ent:id_to_Tx := ent:id_to_Tx.defaultsTo({});
-      ent:id_to_Tx{shopId} := {
+      ent:id_to_Tx{shopId.klog("ID_TO_TX")} := {
         "channel": channel,
         "host": host
       };

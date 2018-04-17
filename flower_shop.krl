@@ -72,7 +72,7 @@ ruleset flower_shop {
 
   rule create_order {
     select when shop order
-  pre {
+    pre {
       orderId = random:uuid()
       order = {
         "id": orderId,
