@@ -198,8 +198,9 @@ ruleset flower_shop {
   rule process_bids {
     select when shop process_bids
     pre {
-      loc = ent:location.klog("Shop Location:");
-      bids = ent:bids{event:attrs{"id"}}.klog("Bids:");
+      loc = ent:location;
+      order = ent:orders{"orderId"}
+      bids = ent:bids{event:attr("orderId")};
       bids = bids.map(function(bid) {
         bid.put("travel_time", google_maps:get_time(loc, bid{"location"}))
       });
@@ -215,15 +216,20 @@ ruleset flower_shop {
         (score1 <= score2) => bid1 | bid2
       }).klog("Winner");
       eci = winner{"wellKnown_Tx"}
+      extra = {
+        "channel": Subscriptions:wellKnown_Rx,
+        "host": meta:host,
+      }
     }
     event:send({
       "eci": eci,
       "domain": "shop",
       "type": "bid_accepted",
-      "attrs": event:attrs
+      "attrs": event:attrs.put("channel", Subscriptions:wellKnown_Rx()),
+      "host": bid{"host"}
     })
     always {
-      raise shop event "bid_accepted" attributes event:attrs
+      raise shop event "bid_accepted" attributes order
     }
   }
   

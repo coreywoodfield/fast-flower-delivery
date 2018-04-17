@@ -116,7 +116,7 @@ ruleset driver {
     }
   }
 
-  rule store_id_to_Tx {
+  rule store_id_to_Tx_on_subscribe {
     select when wrangler pending_subscription_approval where Tx_role == "shop"
     pre {
       channel = event:attr("Tx")
@@ -131,6 +131,24 @@ ruleset driver {
       };
       raise driver event "id_to_Tx_stored"
         attributes {"orderId": event:attr("orderId")}
+    }
+  }
+
+  rule store_id_to_Tx_on_bid_accepted {
+    select when shop bid_accepted
+    pre {
+      orderId = event:attr("orderId")
+      rumor = getMessageByPossibleOrderId(orderId)
+      shopId = rumor{"ShopId"}
+      channel = event:attr("channel")
+      host = event:attr("host")
+    }
+    fired {
+      ent:id_to_Tx := ent:id_to_Tx.defaultsTo({});
+      ent:id_to_Tx{shopId} := {
+        "channel": channel,
+        "host": host
+      }
     }
   }
 
