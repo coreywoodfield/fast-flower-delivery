@@ -22,7 +22,9 @@ ruleset flower_shop {
         { "name": "getLocation" }
       ],
       "events": [
-        { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] }
+        { "domain": "gossip", "type": "new_message", "attrs": [] },
+        { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] },
+        { "domain": "event", "type": "process_bids", "attrs": [] }
       ]
     }
 
