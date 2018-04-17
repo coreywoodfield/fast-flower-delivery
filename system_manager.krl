@@ -30,6 +30,7 @@ ruleset system_manager {
       "io.picolabs.subscription",
       "keys",
       "google_maps",
+      "peer_handler",
       "flower_shop"
       // Add addition shop rulesets here
     ];

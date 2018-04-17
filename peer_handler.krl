@@ -6,20 +6,48 @@ Provides advanced functionality around subscriptions for peers
 >>
 
     use module io.picolabs.subscription alias Subscriptions
+    use module io.picolabs.wrangler alias wrangler
 
-    shares getPeerInfo, getPeers, getPeersWithId, findPeersWith, findWith, __testing
-    provides getPeers, getPeersWithId, findPeersWith, findWith
+    shares getAll, getPeerInfo, getPeers, getPeersWithId, findPeersWith, findWith, id, __testing
+    provides getAll, getPeers, getPeersWithId, findPeersWith, findWith
   }
 
   global {
     __testing = {
       "queries": [
         { "name": "__testing" },
+        { "name": "getAll" },
         { "name": "getPeerInfo" }
       ],
       "events": [
         { "domain": "peers", "type": "system_check_needed", "attrs": ["role"]}
       ]
+    };
+
+    findPeersWith = function(role, field, matches) {
+      getAll()
+        .filter(function(peer) {
+          matches == peer{[field]} && role == peer{"Tx_role"}
+        })
+    };
+
+    findWith = function(field, matches) {
+      getAll()
+        .filter(function(sub) {
+          matches == sub{field}
+        })
+    };
+
+    getAll = function() {
+      peerInfo = getPeerInfo();
+      Subscriptions:established()
+        .map(function(p) {
+          // Merge the extra peer information with the subscription information
+          id = peerInfo{[p{"Tx"}]} => peerInfo{[p{"Tx"}]}
+                                    | "";
+
+          p.put(["id"], id);
+        });
     };
 
     getPeers = function(role) {
@@ -35,31 +63,30 @@ Provides advanced functionality around subscriptions for peers
                     | {}
     };
 
-    findPeersWith = function(role, field, matches) {
-      getPeers(role).filter(function(peer) {
-        matches == peer{[field]}
-      })
-    };
+    id = function() {
+      meta:picoId
+    }
+  }
 
-    findWith = function(field, matches) {
-      peerInfo = getPeerInfo();
-      Subscriptions:established()
-        .filter(function(sub) {
-          matches == sub{field}
-        })
-        .map(function(p) {
-          // Merge the extra peer information with the subscription information
-          id = peerInfo{[p{"Tx"}]} => peerInfo{[p{"Tx"}]}
-                                    | "";
-
-          p.put(["id"], id);
-        });
-    };
+  rule store_id_to_Tx {
+    select when wrangler pending_subscription_approval
+    pre {
+      eci = event:attrs{"Tx"}
+      host = event:attrs{"Tx_host"}
+      picoId = wrangler:skyQuery(eci, "peer_handler", "id", {}, host)
+      haveId = picoId => true | false
+    }
+    if haveId then
+      send_directive("Storing id", { "id": shopId, "attrs": event:attrs })
+    fired {
+      ent:peerInfo := getPeerInfo().put([eci], id);
+      raise peer event "id_stored"
+        attributes { "tx": eci, "id": id }
+    }
   }
 
   rule start_id_handshake {
     select when peers need_id
-             or wrangler subscription_added
     pre {
       tx = event:attrs{"Tx"} => event:attrs{"Tx"}
                               | event:attrs{"_Tx"}
