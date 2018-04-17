@@ -3,16 +3,22 @@ ruleset driver {
   meta {
     name "Driver"
     description <<Driver that delivers flowers>>
+
     use module gossip_node
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias Subscriptions
     use module google_maps
-    shares location, __testing
+
+    shares location, ranking, __testing
   }
 
   global {
 
     __testing = {
+      "queries": [
+        { "name": "location" },
+        { "name": "ranking" }
+      ],
       "events": [
         {
           "domain": "driver",
@@ -74,58 +80,32 @@ ruleset driver {
   }
 
   rule bid {
-    select when driver bid where isOwnerSubscribed(orderId)
+    select when driver bid
     pre {
-      orderId = event:attr("orderId")
+      orderId = event:attrs{"orderId"}
       message = getMessageByPossibleOrderId(orderId)
-      shopId = message{"ShopId"}
-      Tx_info = ent:id_to_Tx{shopId}
-      Tx = Tx_info{"channel"}
-      Tx_host = Tx_info{"host"}
-      Rx = Subscriptions:established("Tx", Tx)[0]{"Rx"}
-      attrs = event:attrs.put({
+      driverBid = {
         "driverId": meta:picoId,
-        "Tx": Rx,
+        "OrderId": orderId,
+        "wellKnown_Tx": Subscriptions:wellKnown_Rx(){"id"},
         "ranking": ranking(),
         "location": location()
-      })
-    }
-    event:send({
-      "eci": Tx,
-      "host": Tx_host,
-      "eid": "driver_bid",
-      "domain": "driver",
-      "type": "bid",
-      "attrs": attrs
-    })
-  }
-
-  rule subscribe_to_shop {
-    select when driver bid where not isOwnerSubscribed(orderId)
-    pre {
-      orderId = event:attr("orderId")
-      shopId = shopFromOrder(orderId)
-      message = getMessageByPossibleOrderId(orderId)
-      Rx_host = meta:host
-      Tx_host = message{"Host"}
-      wellKnown_Rx = Subscriptions:wellKnown_Rx(){"id"}
-      wellKnown_Tx = message{"WellKnown_Tx"}
-    }
-    event:send({
-      "eci": wellKnown_Tx,
-      "eid": "driver_subscribe",
-      "host": Tx_host,
-      "domain": "wrangler",
-      "type": "subscription",
-      "attrs": {
-        "channel_type": "subscription",
-        "Tx_host": Rx_host,
-        "wellKnown_Tx": wellKnown_Rx,
-        "Rx_role": "shop",
-        "Tx_role": "driver",
-        "orderId": orderId
       }
-    })
+    }
+    if message then
+      every {
+        event:send({
+          "eci": message{"WellKnown_Tx"},
+          "eid": "driver_bid",
+          "domain": "driver",
+          "type": "bid",
+          "attrs": driverBid
+        }, host=message{"Host"});
+        send_directive("Bid placed", driverBid)
+      }
+    fired {
+      raise driver event "bid_sent" attributes { "message": message, "bid": driverBid }
+    }
   }
 
   rule bid_on_id_to_Tx_stored {

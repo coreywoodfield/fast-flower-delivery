@@ -11,17 +11,17 @@ ruleset flower_shop {
         with account_sid = keys:twilio{"sid"}
              auth_token = keys:twilio{"token"}
 
-    shares getLocation, id, __testing
+    shares getBids, getLocation, id, __testing
   }
 
   global {
 
     __testing = {
       "queries": [
+        { "name": "getBids" },
         { "name": "getLocation" }
       ],
       "events": [
-        { "domain": "gossip", "type": "new_message", "attrs": [] },
         { "domain": "shop", "type": "order", "attrs": ["destination", "customerPhone"] }
       ]
     }
@@ -31,6 +31,11 @@ ruleset flower_shop {
         .filter(function(sub) {
           sub{"Tx_role"} == "driver"
         });
+    }
+  
+    getBids = function() {
+      ent:bids => ent:bids
+                | {}
     }
 
     getLocation = function() {
@@ -48,6 +53,7 @@ ruleset flower_shop {
 
   }
 
+  // Initialize this ruleset when it is first installed
   rule initialize {
     select when wrangler ruleset_added where rid == meta:rid
     // Randomly assign a location to this flower shop
@@ -72,7 +78,7 @@ ruleset flower_shop {
 
   rule create_order {
     select when shop order
-  pre {
+    pre {
       orderId = random:uuid()
       order = {
         "id": orderId,
@@ -94,7 +100,7 @@ ruleset flower_shop {
   rule request_driver {
     select when shop order_created
     pre {
-	  // Create a gossip message for the order
+      // Create a gossip message for the order
       msg = {
         "Claimed": false,
         "Host": meta:host,
@@ -113,8 +119,14 @@ ruleset flower_shop {
 
   rule store_bid {
     select when driver bid
+    pre {
+      orderId = event:attrs{"OrderId"}
+      bids = ent:bids.defaultsTo({}){orderId}.defaultsTo([])
+        .append(event:attrs).klog("Current Bids:")
+    }
+    send_directive("Bid received", {})
     fired {
-      event:attrs.klog("Bid Attributes:")
+      ent:bids := ent:bids.defaultsTo({}).put(orderId, bids);
     }
   }
 
@@ -173,7 +185,7 @@ ruleset flower_shop {
   rule message_sent {
     select when shop order_created
     pre {
-      id = event:attrs{["Order","id"]}
+      id = event:attrs{["order", "id"]}
     }
     always {
       ent:bids := ent:bids.put(id, []);
