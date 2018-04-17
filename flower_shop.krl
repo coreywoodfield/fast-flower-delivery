@@ -214,18 +214,18 @@ ruleset flower_shop {
         time2 = bid2{"travel_time"};
         score2 = time2 - (rating2 * 60);
         (score1 <= score2) => bid1 | bid2
-      }).klog("Winner");
-      eci = winner{"wellKnown_Tx"}
+      });
+      eci = winner{"wellKnown_Tx"};
       extra = {
-        "channel": Subscriptions:wellKnown_Rx,
-        "host": meta:host,
+        "channel": Subscriptions:wellKnown_Rx(){"id"},
+        "host": meta:host
       }
     }
     event:send({
       "eci": eci,
       "domain": "shop",
       "type": "bid_accepted",
-      "attrs": event:attrs.put("channel", Subscriptions:wellKnown_Rx()),
+      "attrs": event:attrs.put(extra),
       "host": bid{"host"}
     })
     always {
