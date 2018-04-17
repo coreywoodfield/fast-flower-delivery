@@ -145,7 +145,7 @@ ruleset driver {
     }
     fired {
       ent:id_to_Tx := ent:id_to_Tx.defaultsTo({});
-      ent:id_to_Tx{shopId.klog("ID_TO_TX")} := {
+      ent:id_to_Tx{shopId} := {
         "channel": channel,
         "host": host
       };
