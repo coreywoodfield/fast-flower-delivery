@@ -199,7 +199,8 @@ ruleset flower_shop {
     select when shop process_bids
     pre {
       loc = ent:location;
-      order = ent:orders{"orderId"}
+      orderId = event:attr("orderId")
+      order = ent:orders{orderId}
       bids = ent:bids{event:attr("orderId")};
       bids = bids.map(function(bid) {
         bid.put("travel_time", google_maps:get_time(loc, bid{"location"}))
@@ -229,7 +230,7 @@ ruleset flower_shop {
       "host": bid{"host"}
     })
     always {
-      raise shop event "bid_accepted" attributes order
+      raise shop event "bid_accepted" attributes order;
     }
   }
   
